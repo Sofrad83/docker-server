@@ -1,0 +1,9 @@
+/* DB Admin — VOS styles. Chargé après css/app.css : tout ce que vous écrivez ici l'emporte.
+   Les couleurs sont des variables : changez-les pour changer l'apparence partout. Exemple :
+
+   :root[data-theme="dark"] {
+     --accent: #ff8a3d;
+     --bg: #000;
+     --font-size: 14px;
+   }
+*/

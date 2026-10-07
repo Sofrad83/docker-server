@@ -1,2 +1,15 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Fichiers exécutés DANS les containers Linux : toujours LF, même sous Windows
+*.sh        text eol=lf
+*.conf      text eol=lf
+*.ini       text eol=lf
+Caddyfile   text eol=lf
+Dockerfile  text eol=lf
+*.js        text eol=lf
+*.php       text eol=lf
+
+# Lanceurs Windows : CRLF
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf

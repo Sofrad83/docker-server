@@ -1,0 +1,17 @@
+# Réglages propres au poste
+.env
+
+# Vos projets : seuls le README et le .gitkeep sont suivis
+/repo/*
+!/repo/README.md
+!/repo/.gitkeep
+
+# Données générées (état, certificats, sauvegardes, php.ini des projets…)
+/data/*
+!/data/.gitkeep
+
+# Divers
+node_modules/
+.DS_Store
+Thumbs.db
+*.log

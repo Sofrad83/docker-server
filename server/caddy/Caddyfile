@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-server — proxy HTTP / HTTPS (Caddy)
+#
+#  • Tous les sites répondent en http:// ET en https:// (certificats générés par
+#    l'autorité locale de Caddy, voir Réglages → HTTPS dans le tableau de bord).
+#  • Les adresses en .localhost fonctionnent sans toucher au fichier hosts.
+#  • Les sites des projets sont générés par le tableau de bord dans
+#    data/proxy/sites.caddy : ne pas les modifier à la main.
+# ─────────────────────────────────────────────────────────────────────────────
+{
+	local_certs
+	skip_install_trust
+	auto_https disable_redirects
+	admin localhost:2019
+	log {
+		level ERROR
+	}
+}
+
+# Page affichée quand le container d'un projet est arrêté ou absent.
+(projet_arrete) {
+	handle_errors 502 503 504 {
+		header Content-Type "text/html; charset=utf-8"
+		respond <<HTML
+			<!doctype html>
+			<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Projet arrêté</title></head>
+			<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f6f8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a">
+			<div style="max-width:440px;padding:40px;background:#fff;border:1px solid #e4e7ec;border-radius:16px;box-shadow:0 8px 30px rgba(15,23,42,.08);text-align:center">
+			<div style="width:52px;height:52px;margin:0 auto 18px;border-radius:14px;background:#eef0ff;color:#5146e5;display:grid;place-items:center;font-size:26px">&#9208;</div>
+			<h1 style="margin:0 0 8px;font-size:20px">Ce projet est arrêté</h1>
+			<p style="margin:0 0 24px;color:#64748b;line-height:1.5"><strong>{http.request.host}</strong> ne répond pas pour le moment.<br>Démarrez-le depuis le tableau de bord.</p>
+			<a href="//localhost:{http.request.port}/" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#5146e5;color:#fff;text-decoration:none;font-weight:600">Ouvrir le tableau de bord</a>
+			</div></body></html>
+			HTML 503
+	}
+}
+
+# Un projet : http et https vers son container.
+(projet) {
+	reverse_proxy {args[0]}:80
+	import projet_arrete
+}
+
+# ── Tableau de bord et services ─────────────────────────────────────────────
+# « ds-dashboard » : adresse courte, déclarée dans le fichier hosts par start.
+http://localhost, https://localhost, http://127.0.0.1, http://ds-dashboard, https://ds-dashboard {
+	reverse_proxy ds-dashboard:8000
+}
+
+http://dbadmin.localhost, https://dbadmin.localhost {
+	reverse_proxy ds-dbadmin:80
+}
+
+http://mailpit.localhost, https://mailpit.localhost {
+	reverse_proxy ds-mailpit:8025
+}
+
+# Adresse .localhost inconnue.
+http://*.localhost {
+	header Content-Type "text/html; charset=utf-8"
+	respond <<HTML
+		<!doctype html>
+		<html lang="fr"><head><meta charset="utf-8"><title>Aucun projet ici</title></head>
+		<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f6f8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a">
+		<div style="max-width:440px;padding:40px;background:#fff;border:1px solid #e4e7ec;border-radius:16px;text-align:center">
+		<h1 style="margin:0 0 8px;font-size:20px">Aucun projet à cette adresse</h1>
+		<p style="margin:0 0 24px;color:#64748b"><strong>{http.request.host}</strong> n'est associé à aucun projet.</p>
+		<a href="//localhost:{http.request.port}/" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#5146e5;color:#fff;text-decoration:none;font-weight:600">Ouvrir le tableau de bord</a>
+		</div></body></html>
+		HTML 404
+}
+
+# ── Projets (généré) ────────────────────────────────────────────────────────
+import /etc/caddy/sites/*.caddy

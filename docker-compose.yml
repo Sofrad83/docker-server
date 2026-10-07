@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-server — le socle.
+#
+#  Démarrage : start.cmd (Windows) ou ./start.sh (macOS / Linux),
+#  ou simplement « docker compose up -d » puis http://localhost
+#
+#  Les containers des PROJETS, des serveurs MySQL et du FTP ne sont pas
+#  décrits ici : le tableau de bord les crée à la demande, à partir de
+#  data/state.json. Tous les réglages ci-dessous sont optionnels (.env).
+# ─────────────────────────────────────────────────────────────────────────────
+name: docker-server
+
+x-ports: &env
+  BIND_IP: ${BIND_IP:-127.0.0.1}
+  HTTP_PORT: ${HTTP_PORT:-80}
+  HTTPS_PORT: ${HTTPS_PORT:-443}
+  MYSQL_PORT: ${MYSQL_PORT:-3306}
+  MYSQL_VERSION: ${MYSQL_VERSION:-5.7}
+  FTP_PORT: ${FTP_PORT:-21}
+  FTP_PASV_MIN: ${FTP_PASV_MIN:-30000}
+  FTP_PASV_MAX: ${FTP_PASV_MAX:-30009}
+  TZ: ${TZ:-Europe/Paris}
+
+services:
+
+  # ── Proxy HTTP / HTTPS : *.localhost → containers des projets ─────────────
+  proxy:
+    image: caddy:2-alpine
+    container_name: ds-proxy
+    restart: unless-stopped
+    ports:
+      - "${BIND_IP:-127.0.0.1}:${HTTP_PORT:-80}:80"
+      - "${BIND_IP:-127.0.0.1}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./server/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/proxy:/etc/caddy/sites:ro
+      - ./data/caddy:/data
+    networks: [ds]
+
+  # ── Tableau de bord ───────────────────────────────────────────────────────
+  # Pilote Docker via son socket : il crée projets, serveurs MySQL et FTP.
+  dashboard:
+    image: node:22-alpine
+    container_name: ds-dashboard
+    restart: unless-stopped
+    working_dir: /workspace/dashboard
+    command: ["node", "server.js"]
+    environment: *env
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [ds]
+
+  # ── DB Admin : administration des bases (http://dbadmin.localhost) ────────
+  dbadmin:
+    image: php:8.4-apache
+    container_name: ds-dbadmin
+    restart: unless-stopped
+    command: ["sh", "/app/start.sh"]
+    volumes:
+      - ./dbadmin:/app
+      - ./dbadmin/php.ini:/usr/local/etc/php/conf.d/zz-dbadmin.ini:ro
+      - ./data/backups:/backups
+      - ./data:/state:ro
+    networks: [ds]
+
+  # ── Mailpit : capture tous les mails envoyés par PHP (http://mailpit.localhost)
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: ds-mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "5000"
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    networks: [ds]
+
+networks:
+  ds:
+    name: docker-server

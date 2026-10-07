@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>docker-server</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%235146e5'/%3E%3Cg fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 7 7 11.5l9 4.5 9-4.5z'/%3E%3Cpath d='m7 16 9 4.5 9-4.5'/%3E%3Cpath d='m7 20.5 9 4.5 9-4.5'/%3E%3C/g%3E%3C/svg%3E">
+  <script>
+    // Thème appliqué avant le premier rendu : pas de flash.
+    try {
+      var t = localStorage.getItem('ds.theme');
+      document.documentElement.dataset.theme = t || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    } catch (e) {}
+  </script>
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/vendor/xterm/xterm.css">
+</head>
+<body>
+  <div id="app">
+    <div class="splash"><div class="splash-logo"></div><p>Chargement de docker-server…</p></div>
+  </div>
+  <noscript>docker-server a besoin de JavaScript.</noscript>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
