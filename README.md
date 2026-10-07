@@ -49,7 +49,8 @@ Pas encore de code ? **Nouveau projet › Nouveau dossier** crée un dossier ave
 |---|---|---|
 | Hôte | `mysql` | `127.0.0.1` |
 | Port | `3306` | `3306` (ou celui affiché) |
-| Utilisateur / mot de passe | `root` / `root` | `root` / `root` |
+| Utilisateur | `root` | `root` |
+| Mot de passe | *(vide)* | *(vide)* |
 
 L'onglet **Aperçu** de chaque projet donne la configuration prête à copier pour Laravel, Symfony, WordPress et PDO. docker-server n'écrit jamais dans les fichiers de vos projets.
 

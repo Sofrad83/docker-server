@@ -15,7 +15,9 @@ $ErrorActionPreference = 'Continue'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $Root = Split-Path -Parent $PSScriptRoot
 $Tool = Join-Path $PSScriptRoot 'mysql-tool.sh'
-$TargetPassword = 'root'
+# Root sans mot de passe ; « root » pour un serveur pas encore converti (ancienne version).
+$TargetPasswords = @('', 'root')
+$TargetPassword = ''
 
 function Step($m) { Write-Host "  ..  $m" -ForegroundColor DarkGray }
 function Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
@@ -177,7 +179,10 @@ if ($null -eq $srcPassword) {
   $srcVersion = $r.Out[-1]
 }
 
-$r = InContainer $t.Name $TargetPassword @('ping')
+foreach ($pw in $TargetPasswords) {
+  $r = InContainer $t.Name $pw @('ping')
+  if ($r.Code -eq 0) { $TargetPassword = $pw; break }
+}
 if ($r.Code -ne 0) { Fail "Le serveur $($t.Name) ne répond pas : $($r.Out -join ' ')" }
 $tgtVersion = $r.Out[-1]
 Ok "Source      : $($s.Name) — $srcVersion"
@@ -253,6 +258,6 @@ foreach ($d in $dbs) {
 Cleanup
 Write-Host ""
 if ($bad) { Warn "$bad base(s) à vérifier." } else { Write-Host '  Copie terminée.' -ForegroundColor Green }
-Write-Host "  Dans vos projets : hôte « $(if ($t.Name -eq 'ds-mysql') { 'mysql' } else { $t.Name -replace '^ds-db-', '' }) », utilisateur « root », mot de passe « root »." -ForegroundColor White
+Write-Host "  Dans vos projets : hôte « $(if ($t.Name -eq 'ds-mysql') { 'mysql' } else { $t.Name -replace '^ds-db-', '' }) », utilisateur « root », sans mot de passe." -ForegroundColor White
 Write-Host "  Copie de sécurité : data\backups\$folder (supprimable)." -ForegroundColor DarkGray
 Write-Host ""

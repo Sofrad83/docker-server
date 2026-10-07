@@ -333,6 +333,11 @@ export function codeValue(text, { secret = false } = {}) {
   return h('span.code-value', val, eye, copyBtn(text));
 }
 
+/** Mot de passe : la valeur, ou « aucun » quand il est vide. */
+export function passwordValue(pw) {
+  return pw ? codeValue(pw) : h('span.muted', 'aucun (vide)');
+}
+
 /** Bloc de code avec bouton copier. */
 export function codeBlock(text, { lang } = {}) {
   return h('div.code-block', h('div.code-head', h('span.code-lang', lang || ''), copyBtn(text)), h('pre', h('code', text)));

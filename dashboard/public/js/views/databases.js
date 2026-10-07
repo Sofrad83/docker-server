@@ -1,7 +1,7 @@
 // Page « Bases de données » : serveurs MySQL / MariaDB, bases, versions.
 import {
   h, icon, get, post, put, del, store, refresh, replace, toast, errorToast, modal, menu, confirmDialog,
-  field, statusPill, codeValue, fmtBytes,
+  field, statusPill, codeValue, fmtBytes, passwordValue,
 } from '../lib.js';
 import { pageHeader } from './projects.js';
 
@@ -127,7 +127,7 @@ function instanceCard(inst, ov, onDbsChanged) {
       h('div.conn', h('span.conn-label', 'Depuis vos projets'), codeValue(`${inst.id}:3306`)),
       h('div.conn', h('span.conn-label', 'Depuis votre PC'), codeValue(`127.0.0.1:${inst.port}`)),
       h('div.conn', h('span.conn-label', 'Utilisateur'), codeValue('root')),
-      h('div.conn', h('span.conn-label', 'Mot de passe'), codeValue(ov.config.dbPassword))),
+      h('div.conn', h('span.conn-label', 'Mot de passe'), passwordValue(ov.config.dbPassword))),
     h('div.db-section-head',
       h('h4', 'Bases'),
       h('div.db-section-actions',
@@ -219,7 +219,7 @@ async function removeServer(inst) {
 export function mount(root) {
   const list = h('div.db-cards');
   root.append(h('div.page',
-    pageHeader('Bases de données', 'Serveurs MySQL et MariaDB. Identifiant root, mot de passe root.', [
+    pageHeader('Bases de données', 'Serveurs MySQL et MariaDB. Utilisateur root, sans mot de passe.', [
       h('button.btn.btn-primary', { type: 'button', onclick: newServer }, icon('plus', 16), 'Nouveau serveur'),
     ]),
     list));

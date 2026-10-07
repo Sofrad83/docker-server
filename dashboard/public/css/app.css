@@ -359,6 +359,9 @@ h3 .tag { margin-left: 8px; vertical-align: 2px; }
 .banner code { background: rgba(255,255,255,.5); padding: 1px 5px; border-radius: 4px; }
 [data-theme="dark"] .banner code { background: rgba(0,0,0,.25); }
 .banner .code-block { margin-top: 6px; }
+.banner-buttons { display: flex; gap: 6px; flex: none; }
+/* Message d'erreur : 4 lignes au plus, le détail complet est dans le journal. */
+.banner-error-text { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12.5px; }
 .banners { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
 .banners:empty { display: none; }
 .inline-last { font-family: var(--mono); font-size: 12px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

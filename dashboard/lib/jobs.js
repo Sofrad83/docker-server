@@ -69,13 +69,25 @@ class Job extends EventEmitter {
   finish(error, result) {
     for (const s of this.steps) if (s.status === 'running') s.status = error ? 'failed' : 'done';
     this.status = error ? 'failed' : 'done';
-    this.error = error ? (error.message || String(error)) : null;
+    this.error = error ? cleanMessage(error.message || String(error)) : null;
     this.result = result ?? null;
     this.endedAt = Date.now();
     if (error) this.log(`✖ ${this.error}`);
     this.emitEvent({ type: 'end', job: this.summary() });
     this.emit('ended');
   }
+}
+
+/**
+ * Message d'erreur lisible : sans la page HTML qu'un serveur distant renvoie parfois
+ * (GitHub, miroirs…), sur une ligne, de longueur raisonnable. Le journal garde le détail.
+ */
+function cleanMessage(msg) {
+  let m = String(msg);
+  const html = m.search(/<!DOCTYPE|<html/i);
+  if (html >= 0) m = `${m.slice(0, html).trim()} (le serveur distant a renvoyé une page d'erreur)`;
+  m = m.replace(/\s+/g, ' ').trim();
+  return m.length > 400 ? `${m.slice(0, 400)}…` : m;
 }
 
 function prune() {

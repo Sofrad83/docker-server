@@ -54,10 +54,38 @@ function sh(script) {
 
 const ENV = [`MYSQL_PWD=${cfg.dbPassword}`];
 
+function run(inst, sql, password) {
+  return docker.exec(containerName(inst), sh(`$C -uroot -h127.0.0.1 --protocol=TCP -N -B -e "$1"`).concat(['sh', sql]), { env: [`MYSQL_PWD=${password}`] });
+}
+
 async function query(inst, sql) {
-  const res = await docker.exec(containerName(inst), sh(`$C -uroot -h127.0.0.1 --protocol=TCP -N -B -e "$1"`).concat(['sh', sql]), { env: ENV });
+  let res = await run(inst, sql, cfg.dbPassword);
+  if (res.code !== 0 && /Access denied/i.test(res.stderr) && await resetLegacyPassword(inst)) {
+    res = await run(inst, sql, cfg.dbPassword);
+  }
   if (res.code !== 0) throw new Error((res.stderr || res.stdout).replace(/^.*Warning.*\n?/gm, '').trim() || 'Requête refusée');
   return res.stdout.split('\n').filter(Boolean).map((l) => l.split('\t'));
+}
+
+/**
+ * Serveur créé par une ancienne version de docker-server (root / root) :
+ * on remet le mot de passe root à vide, sans toucher aux données.
+ */
+async function resetLegacyPassword(inst) {
+  for (const old of cfg.legacyDbPasswords) {
+    const hosts = await run(inst, "SELECT host FROM mysql.user WHERE user = 'root'", old);
+    if (hosts.code !== 0) continue;
+    for (const host of hosts.stdout.split('\n').filter(Boolean)) {
+      const account = `'root'@'${host.replace(/'/g, '')}'`;
+      const r = await run(inst, `ALTER USER ${account} IDENTIFIED BY '${cfg.dbPassword}'`, old);
+      // MySQL 5.6 ne connaît pas ALTER USER … IDENTIFIED BY.
+      if (r.code !== 0) await run(inst, `SET PASSWORD FOR ${account} = PASSWORD('${cfg.dbPassword}')`, old);
+    }
+    await run(inst, 'FLUSH PRIVILEGES', old);
+    console.log(`[mysql] ${inst.id} : mot de passe root remis à vide (ancienne configuration).`);
+    return true;
+  }
+  return false;
 }
 
 async function waitReady(inst, job, timeout = 180000) {
@@ -90,9 +118,10 @@ function spec(inst) {
   return {
     Image: image(inst),
     Cmd: args(inst),
+    // Root sans mot de passe (cfg.dbPassword vide), accessible depuis les projets.
     Env: inst.engine === 'mariadb'
-      ? [`MARIADB_ROOT_PASSWORD=${cfg.dbPassword}`, 'MARIADB_ROOT_HOST=%', `TZ=${cfg.timezone}`]
-      : [`MYSQL_ROOT_PASSWORD=${cfg.dbPassword}`, 'MYSQL_ROOT_HOST=%', `TZ=${cfg.timezone}`],
+      ? [cfg.dbPassword ? `MARIADB_ROOT_PASSWORD=${cfg.dbPassword}` : 'MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1', 'MARIADB_ROOT_HOST=%', `TZ=${cfg.timezone}`]
+      : [cfg.dbPassword ? `MYSQL_ROOT_PASSWORD=${cfg.dbPassword}` : 'MYSQL_ALLOW_EMPTY_PASSWORD=yes', 'MYSQL_ROOT_HOST=%', `TZ=${cfg.timezone}`],
     Labels: { [cfg.LABEL]: 'mysql', 'docker-server.id': inst.id },
     ExposedPorts: { '3306/tcp': {} },
     HostConfig: {
@@ -171,6 +200,8 @@ async function reconcile() {
     const c = await docker.inspect(containerName(inst)).catch(() => null);
     if (!c) jobs.run(`Préparation de ${label(inst)}`, { key: `mysql:${inst.id}`, mysql: inst.id }, (job) => provision(inst, job));
     else if (!c.State.Running) await docker.start(containerName(inst)).catch((e) => console.error(`[mysql] ${inst.id} :`, e.message));
+    // En arrière-plan : dès que le serveur répond, une éventuelle ancienne configuration est convertie.
+    if (c) waitReady(inst, null, 120000).catch(() => null);
   }
 }
 

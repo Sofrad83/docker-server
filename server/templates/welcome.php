@@ -10,7 +10,7 @@ if (isset($_GET['mail'])) {
 $db = ['ok' => false, 'msg' => 'Extension pdo_mysql absente'];
 if (extension_loaded('pdo_mysql')) {
     try {
-        $pdo = new PDO('mysql:host=mysql;port=3306', 'root', 'root', [PDO::ATTR_TIMEOUT => 3]);
+        $pdo = new PDO('mysql:host=mysql;port=3306', 'root', '', [PDO::ATTR_TIMEOUT => 3]);
         $db = ['ok' => true, 'msg' => $pdo->query('SELECT VERSION()')->fetchColumn()];
     } catch (Exception $e) {
         $db = ['ok' => false, 'msg' => $e->getMessage()];
@@ -80,7 +80,7 @@ function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, "UTF-8"); }
     <h2>Et maintenant ?</h2>
     <ol>
       <li>Remplacez ce fichier <code>index.php</code> par votre code, dans <code>repo/<?= h(basename(__DIR__)) ?>/</code>.</li>
-      <li>Connectez-vous à MySQL avec l'hôte <code>mysql</code>, l'utilisateur <code>root</code> et le mot de passe <code>root</code>.</li>
+      <li>Connectez-vous à MySQL avec l'hôte <code>mysql</code>, l'utilisateur <code>root</code>, sans mot de passe.</li>
       <li>Version de PHP, extensions, Composer, logs et terminal : tout se règle dans le tableau de bord.</li>
     </ol>
   </div>

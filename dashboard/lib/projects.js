@@ -86,7 +86,14 @@ function containerSpec(p, tag) {
 /** Construit l'image si besoin, (re)crée le container si sa définition a changé, le démarre. */
 async function ensureRunning(p, job, { restart = false } = {}) {
   job.step(`Image PHP ${p.php}`);
-  const tag = await images.ensure(p, job);
+  const key = images.configKey(p);
+  let tag;
+  if (p.image && p.imageKey === key && await docker.imageExists(p.image)) {
+    tag = p.image;
+    job.log(`Image ${tag} réutilisée.`);
+  } else {
+    tag = await images.ensure(p, job);
+  }
   writeIni(p);
   const spec = containerSpec(p, tag);
   const name = containerName(p);
@@ -104,8 +111,10 @@ async function ensureRunning(p, job, { restart = false } = {}) {
   store.update((s) => {
     if (!s.projects[p.slug]) return;
     s.projects[p.slug].image = tag;
+    s.projects[p.slug].imageKey = key;
     s.projects[p.slug].stopped = false;
     delete s.projects[p.slug].error;
+    delete s.projects[p.slug].errorJob;
   });
   job.step('Routage http / https');
   await proxy.apply();
@@ -116,7 +125,13 @@ async function ensureRunning(p, job, { restart = false } = {}) {
 function runJob(p, title, fn) {
   const job = jobs.run(title, { key: key(p.slug), project: p.slug }, fn);
   job.once('ended', () => {
-    if (job.status === 'failed') store.update((s) => { if (s.projects[p.slug]) s.projects[p.slug].error = job.error; });
+    if (job.status === 'failed') {
+      store.update((s) => {
+        if (!s.projects[p.slug]) return;
+        s.projects[p.slug].error = job.error;
+        s.projects[p.slug].errorJob = job.id;
+      });
+    }
   });
   return job;
 }
@@ -326,7 +341,7 @@ async function update(slug, input) {
 }
 
 async function pruneImages(job) {
-  const used = Object.values(store.get().projects).map((p) => images.tagFor(p));
+  const used = Object.values(store.get().projects).flatMap((p) => [p.image, images.tagFor(p)]).filter(Boolean);
   const removed = await images.prune(used);
   if (removed.length) job?.log(`Images inutilisées supprimées : ${removed.join(', ')}`);
   return removed;
@@ -352,15 +367,20 @@ async function restart(slug) {
 function rebuild(slug) {
   const p = get(slug);
   return runJob(p, `Reconstruction de « ${p.name} »`, async (job) => {
-    const tag = images.tagFor(p);
-    const users = Object.values(store.get().projects).filter((x) => x.slug !== slug && images.tagFor(x) === tag);
+    // Reconstruire = repartir du modèle de Dockerfile actuel.
+    const old = p.image || images.tagFor(p);
+    const users = Object.values(store.get().projects).filter((x) => x.slug !== slug && (x.image || images.tagFor(x)) === old);
     await docker.remove(containerName(p));
     if (!users.length) {
       job.step('Suppression de l\'ancienne image');
-      await docker.removeImage(tag);
+      await docker.removeImage(old);
+      if (old !== images.tagFor(p)) await docker.removeImage(images.tagFor(p));
     } else {
-      job.log(`Image partagée avec ${users.map((x) => x.name).join(', ')} : elle est réutilisée.`);
+      job.log(`Image partagée avec ${users.map((x) => x.name).join(', ')} : elle n'est pas supprimée.`);
     }
+    delete p.image;
+    delete p.imageKey;
+    store.update((s) => { if (s.projects[slug]) { delete s.projects[slug].image; delete s.projects[slug].imageKey; } });
     await ensureRunning(p, job);
   });
 }
@@ -401,6 +421,11 @@ function command(slug, cmd) {
 async function reconcile() {
   const list = await docker.list(`${cfg.LABEL}=project`).catch(() => []);
   const bySlug = new Map(list.map((c) => [c.Labels?.['docker-server.slug'], c]));
+  // Projets créés avant la clé de configuration : leur image correspond à leur configuration
+  // actuelle (chaque changement passait par une reconstruction), on la mémorise telle quelle.
+  store.update((s) => {
+    for (const p of Object.values(s.projects)) if (p.image && !p.imageKey) p.imageKey = images.configKey(p);
+  });
   for (const p of Object.values(store.get().projects)) {
     writeIni(p);
     if (p.stopped) continue;

@@ -16,14 +16,14 @@ foreach ((array)($state['mysql'] ?? []) as $id => $inst) {
         'host'     => $id,
         'port'     => 3306,
         'user'     => 'root',
-        'password' => 'root',
+        'password' => '',
     ];
     if (!empty($inst['default'])) {
         $default = $id;
     }
 }
 if (!$servers) {
-    $servers['mysql'] = ['label' => 'MySQL', 'host' => 'mysql', 'port' => 3306, 'user' => 'root', 'password' => 'root'];
+    $servers['mysql'] = ['label' => 'MySQL', 'host' => 'mysql', 'port' => 3306, 'user' => 'root', 'password' => ''];
 }
 
 return [

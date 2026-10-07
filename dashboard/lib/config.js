@@ -45,7 +45,10 @@ module.exports = {
   ftpPasvMax: int(env.FTP_PASV_MAX, 30009),
 
   timezone: env.TZ || 'Europe/Paris',
-  dbPassword: 'root',
+  // Mot de passe root des serveurs MySQL : vide, comme la plupart des environnements locaux.
+  dbPassword: '',
+  // Anciennes versions de docker-server (root / root) : converties automatiquement.
+  legacyDbPasswords: ['root'],
 
   // Renseigné au démarrage : chemin de WORKSPACE vu par la machine hôte (pour les montages).
   hostRoot: '',

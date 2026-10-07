@@ -2,10 +2,10 @@
 import {
   h, icon, get, post, put, del, store, refresh, replace, toast, errorToast, modal, menu, confirmDialog,
   field, toggle, statusPill, avatar, copyBtn, stackLabel, codeValue, codeBlock, snippetTabs,
-  cleanHost, HOST_OK, hostState, HOSTS_TOOL,
+  cleanHost, HOST_OK, hostState, HOSTS_TOOL, passwordValue,
 } from '../lib.js';
 import { extensionPicker } from '../components/extensions.js';
-import { inlineJob, followJob, consoleView } from '../components/jobs.js';
+import { inlineJob, followJob, consoleView, openJob } from '../components/jobs.js';
 import { logViewer } from '../components/logs.js';
 import { terminal } from '../components/terminal.js';
 
@@ -162,8 +162,10 @@ export function mount(root, params) {
     const items = [];
     if (p.error && p.status !== 'running') {
       items.push(h('div.banner.banner-error', icon('circle-x', 18),
-        h('div.banner-body', h('strong', 'La dernière opération a échoué'), h('p', p.error)),
-        h('button.btn.btn-sm', { type: 'button', onclick: (e) => act('start', e.currentTarget) }, icon('refresh', 14), 'Réessayer')));
+        h('div.banner-body', h('strong', 'La dernière opération a échoué'), h('p.banner-error-text', { title: p.error }, p.error)),
+        h('div.banner-buttons',
+          p.errorJob ? h('button.btn.btn-sm.btn-ghost', { type: 'button', onclick: () => openJob(p.errorJob) }, icon('logs', 14), 'Journal') : null,
+          h('button.btn.btn-sm', { type: 'button', onclick: (e) => act('start', e.currentTarget) }, icon('refresh', 14), 'Réessayer'))));
     }
     const waiting = p.domains.filter((d) => hostState(d) === 'missing');
     if (waiting.length) items.push(hostsHelp(waiting));
@@ -261,12 +263,12 @@ export function mount(root, params) {
           ['Hôte (depuis le projet)', codeValue(`${x.host}:${x.port}`)],
           ['Hôte (depuis votre PC)', codeValue(`127.0.0.1:${x.hostPort}`)],
           ['Utilisateur', codeValue(x.user)],
-          ['Mot de passe', codeValue(x.password)],
+          ['Mot de passe', passwordValue(x.password)],
         ]),
         h('p.card-hint', 'À copier dans la configuration de votre projet :'),
         snippetTabs([
           { label: 'Laravel', lang: '.env', text: `DB_CONNECTION=mysql\nDB_HOST=${x.host}\nDB_PORT=${x.port}\nDB_DATABASE=${x.name}\nDB_USERNAME=${x.user}\nDB_PASSWORD=${x.password}` },
-          { label: 'Symfony', lang: '.env', text: `DATABASE_URL="mysql://${x.user}:${x.password}@${x.host}:${x.port}/${x.name}?serverVersion=${sv}&charset=utf8mb4"` },
+          { label: 'Symfony', lang: '.env', text: `DATABASE_URL="mysql://${x.user}${x.password ? `:${x.password}` : ''}@${x.host}:${x.port}/${x.name}?serverVersion=${sv}&charset=utf8mb4"` },
           { label: 'WordPress', lang: 'wp-config.php', text: `define( 'DB_NAME', '${x.name}' );\ndefine( 'DB_USER', '${x.user}' );\ndefine( 'DB_PASSWORD', '${x.password}' );\ndefine( 'DB_HOST', '${x.host}' );` },
           { label: 'PHP (PDO)', lang: 'php', text: `$pdo = new PDO('mysql:host=${x.host};port=${x.port};dbname=${x.name};charset=utf8mb4', '${x.user}', '${x.password}');` },
         ]),
