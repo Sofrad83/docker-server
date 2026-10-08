@@ -208,6 +208,9 @@ async function reconcile() {
 function validateId(id) {
   if (!/^[a-z][a-z0-9-]{1,30}$/.test(id)) throw httpError(400, 'Identifiant invalide : lettres minuscules, chiffres et tirets (2 à 31 caractères).');
   if (store.get().mysql[id] || id === 'mysql') throw httpError(409, `Un serveur « ${id} » existe déjà.`);
+  // L'identifiant devient le nom réseau du serveur : il ne doit pas masquer le nom réseau d'un projet.
+  const project = Object.values(store.get().projects).find((p) => (p.aliases || []).includes(id));
+  if (project) throw httpError(409, `« ${id} » est déjà le nom réseau du projet « ${project.name} ».`);
 }
 
 function httpError(status, message) {

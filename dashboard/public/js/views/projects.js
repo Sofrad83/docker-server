@@ -1,6 +1,6 @@
 // Page « Projets » : dossiers détectés, cartes des projets, création.
 import {
-  h, icon, post, get, store, refresh, replace, toast, errorToast, modal, field, toggle,
+  h, icon, post, get, del, store, refresh, replace, toast, errorToast, modal, field, toggle,
   statusPill, avatar, copyBtn, stackLabel, cleanHost, hostHint, HOST_OK,
 } from '../lib.js';
 import { extensionPicker } from '../components/extensions.js';
@@ -22,6 +22,23 @@ async function quickAdd(folder, btn) {
     errorToast(e);
     btn?.classList.remove('busy');
     return null;
+  }
+}
+
+/** Ignore un dossier (ce n'est pas un site) ou le propose à nouveau. */
+async function setIgnored(folder, on, btn) {
+  btn?.classList.add('busy');
+  const url = `/api/folders/${encodeURIComponent(folder)}/ignore`;
+  try {
+    await (on ? post(url) : del(url));
+    toast(on ? `« ${folder} » est ignoré` : `« ${folder} » est de nouveau proposé`, {
+      type: 'success',
+      action: on ? { label: 'Annuler', onClick: () => setIgnored(folder, false) } : null,
+    });
+    await refresh();
+  } catch (e) {
+    errorToast(e);
+    btn?.classList.remove('busy');
   }
 }
 
@@ -92,9 +109,21 @@ function pendingSection(pending) {
           h('strong', d.folder),
           h('span.muted', [stackLabel(d), d.docroot ? `dossier public : ${d.docroot}/` : null, d.database ? `base « ${d.database} »` : null].filter(Boolean).join(' · '))),
         h('span.pending-url.muted', `${d.slug}.localhost`),
+        h('button.btn.btn-ghost.btn-sm', { type: 'button', title: 'Ce n\'est pas un site : ne plus le proposer', onclick: (e) => setIgnored(d.folder, true, e.currentTarget) }, 'Ignorer'),
         h('button.btn.btn-ghost.btn-sm', { type: 'button', onclick: () => openNewProject({ folder: d.folder }) }, 'Personnaliser'),
         add);
     })));
+}
+
+function ignoredSection(folders, open) {
+  const n = folders.length;
+  return h('details.advanced.ignored', { open },
+    h('summary', icon('chevron-right', 15), `${n} dossier${n > 1 ? 's' : ''} ignoré${n > 1 ? 's' : ''}`, h('span.muted', '· pas proposés comme projets')),
+    h('div.ignored-list', folders.map((f) => h('div.ignored-row',
+      icon('folder', 15),
+      h('code', f),
+      h('span.spacer'),
+      h('button.btn.btn-ghost.btn-sm', { type: 'button', onclick: (e) => setIgnored(f, false, e.currentTarget) }, icon('eye', 14), 'Ne plus ignorer')))));
 }
 
 function emptyState(ov) {
@@ -127,13 +156,15 @@ export function mount(root) {
   const pendingBox = h('div');
   const grid = h('div.project-grid');
   const emptyBox = h('div');
+  const ignoredBox = h('div');
   const sub = h('span');
   root.append(h('div.page',
     pageHeader('Projets', sub, [h('button.btn.btn-primary', { type: 'button', onclick: () => openNewProject() }, icon('plus', 16), 'Nouveau projet')]),
-    pendingBox, grid, emptyBox));
+    pendingBox, grid, emptyBox, ignoredBox));
 
   const cards = new Map();
   let pendingSig = '';
+  let ignoredSig = '';
 
   return {
     update(ov) {
@@ -165,6 +196,13 @@ export function mount(root) {
       const showEmpty = !ov.projects.length && !ov.pending.length;
       if (showEmpty && !emptyBox.firstChild) replace(emptyBox, emptyState(ov));
       if (!showEmpty && emptyBox.firstChild) replace(emptyBox);
+
+      const ignored = ov.ignored || [];
+      if (JSON.stringify(ignored) !== ignoredSig) {
+        ignoredSig = JSON.stringify(ignored);
+        // Garde la liste ouverte si elle l'était (« Ne plus ignorer » plusieurs fois de suite).
+        replace(ignoredBox, ignored.length ? ignoredSection(ignored, !!ignoredBox.querySelector('details[open]')) : null);
+      }
     },
   };
 }
@@ -178,6 +216,7 @@ export async function openNewProject({ folder, mode } = {}) {
   let current = mode || (folder || free.length ? 'existing' : 'new');
   const st = {
     folder: folder || free[0] || '',
+    path: '',
     newFolder: '',
     template: 'welcome',
     name: '',
@@ -194,9 +233,10 @@ export async function openNewProject({ folder, mode } = {}) {
 
   const segBtns = {
     existing: h('button', { type: 'button', onclick: () => setMode('existing') }, icon('folder', 15), 'Dossier de repo/'),
+    path: h('button', { type: 'button', onclick: () => setMode('path') }, icon('link', 15), 'Sous-dossier'),
     new: h('button', { type: 'button', onclick: () => setMode('new') }, icon('folder-plus', 15), 'Nouveau dossier'),
   };
-  const seg = h('div.seg.seg-wide', segBtns.existing, segBtns.new);
+  const seg = h('div.seg.seg-wide', segBtns.existing, segBtns.path, segBtns.new);
   const sourceBox = h('div');
   const detectBox = h('div');
 
@@ -299,18 +339,57 @@ export async function openNewProject({ folder, mode } = {}) {
     try { applyDetection(await get(`/api/detect?folder=${encodeURIComponent(st.folder)}`)); } catch (e) { errorToast(e); }
   }
 
+  // Sous-dossier : détection à la volée, erreurs affichées sous le champ (pas de toast à chaque frappe).
+  let pathTimer = null;
+  let pathSeq = 0;
+  async function detectPath() {
+    const seq = ++pathSeq;
+    if (!st.path) { applyDetection(null); return; }
+    try {
+      const d = await get(`/api/detect?folder=${encodeURIComponent(st.path)}`);
+      if (seq !== pathSeq) return;
+      st.folder = d.folder;
+      applyDetection(d);
+    } catch (e) {
+      if (seq !== pathSeq) return;
+      st.folder = '';
+      replace(detectBox, h('div.banner.banner-warn', icon('alert', 16), h('div.banner-body', h('p', e.message))));
+    }
+  }
+
   function setMode(m) {
     current = m;
-    segBtns.existing.classList.toggle('active', m === 'existing');
-    segBtns.new.classList.toggle('active', m === 'new');
-    if (m === 'existing') {
+    for (const [k, b] of Object.entries(segBtns)) b.classList.toggle('active', k === m);
+    if (m === 'path') {
+      const list = h('datalist#subfolders');
+      const input = h('input.input.mono', {
+        placeholder: 'mon-client/site-web',
+        value: st.path,
+        list: 'subfolders',
+        autocomplete: 'off',
+        spellcheck: false,
+        oninput: () => {
+          st.path = input.value.trim();
+          clearTimeout(pathTimer);
+          pathTimer = setTimeout(detectPath, 350);
+        },
+      });
+      replace(sourceBox, field('Chemin du dossier', h('div', input, list),
+        h('span', 'Un dossier de ', h('code', 'repo/'), ' à n\'importe quelle profondeur, par exemple un site rangé dans le dossier d\'un client. Vous pouvez aussi coller son chemin complet.')));
+      get('/api/folders').then(({ subfolders }) => replace(list, subfolders.map((f) => h('option', { value: f })))).catch(() => null);
+      st.folder = '';
+      detectPath();
+      setTimeout(() => input.focus(), 50);
+    } else if (m === 'existing') {
+      st.folder = free.includes(st.folder) ? st.folder : free[0] || '';
       const sel = h('select.input', { onchange: () => { st.folder = sel.value; detect(); } },
         free.map((f) => h('option', { value: f }, `repo/${f}`)));
       sel.value = st.folder;
       replace(sourceBox, free.length
         ? field('Dossier', sel, 'Les dossiers de repo/ qui ne sont pas encore des projets.')
         : h('div.banner.banner-info', icon('info', 16), h('div.banner-body', h('strong', 'Aucun dossier libre dans repo/'),
-          h('p', 'Copiez votre site dans ', h('code', ov.config.repoPath), ', il apparaîtra ici. Ou créez un nouveau dossier.'))));
+          h('p', 'Copiez votre site dans ', h('code', ov.config.repoPath), ', il apparaîtra ici. Votre site est rangé dans un sous-dossier ? Utilisez ',
+            h('a', { href: '#', onclick: (e) => { e.preventDefault(); setMode('path'); } }, 'Sous-dossier'), '.'))));
       detect();
     } else {
       const input = h('input.input', {
@@ -379,6 +458,9 @@ export async function openNewProject({ folder, mode } = {}) {
           if (current === 'existing') {
             if (!st.folder) throw new Error('Choisissez un dossier.');
             payload.folder = st.folder;
+          } else if (current === 'path') {
+            if (!st.path) throw new Error('Indiquez le chemin du dossier.');
+            payload.folder = st.path;
           } else {
             if (!st.newFolder) throw new Error('Donnez un nom au dossier.');
             payload.newFolder = st.newFolder;

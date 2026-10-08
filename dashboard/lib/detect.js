@@ -199,6 +199,22 @@ function listFolders() {
   }
 }
 
+// Sous-dossiers qui ne sont jamais un site : pas proposés dans l'assistant.
+const NOT_SITES = new Set(['vendor', 'node_modules', 'storage', 'var', 'cache', 'tmp', 'logs', 'tests', 'docs']);
+
+/** Sous-dossiers de premier niveau des dossiers de repo/ (« client/site-web »), pour l'autocomplétion. */
+function listSubfolders() {
+  const out = [];
+  for (const top of listFolders()) {
+    try {
+      for (const d of fs.readdirSync(path.join(cfg.REPO_DIR, top), { withFileTypes: true })) {
+        if (d.isDirectory() && !d.name.startsWith('.') && !NOT_SITES.has(d.name.toLowerCase())) out.push(`${top}/${d.name}`);
+      }
+    } catch { /* dossier illisible : ignoré */ }
+  }
+  return out;
+}
+
 /** Informations utiles à l'onglet « Commandes » : scripts npm, composer, framework. */
 function tooling(folder) {
   const dir = path.join(cfg.REPO_DIR, folder);
@@ -217,4 +233,4 @@ function tooling(folder) {
   };
 }
 
-module.exports = { detect, listFolders, tooling, slugify, satisfies, pickPhp };
+module.exports = { detect, listFolders, listSubfolders, tooling, slugify, satisfies, pickPhp };

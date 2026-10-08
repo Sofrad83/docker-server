@@ -49,7 +49,7 @@ async function accountForm(info, existing) {
   const regen = h('button.btn.btn-ghost.btn-icon', { type: 'button', title: 'Générer un autre mot de passe', onclick: async () => { pass.value = (await get('/api/ftp-password')).password; } }, icon('refresh', 15));
   const label = h('input.input', { value: existing?.label || '', placeholder: 'Ex. : dépôt de documents' });
 
-  const folders = [...new Set([...ov.projects.map((p) => p.folder), ...ov.pending.map((d) => d.folder)])].sort();
+  const folders = [...new Set([...ov.projects.map((p) => p.folder), ...ov.pending.map((d) => d.folder), ...(ov.ignored || [])])].sort();
   const cur = existing?.path || '';
   let kind = !existing ? 'dedicated' : cur.startsWith('data/ftp/') ? 'dedicated' : cur.startsWith('repo/') ? 'project' : 'custom';
   const projSel = h('select.input', folders.map((f) => h('option', { value: f }, `repo/${f}`)));

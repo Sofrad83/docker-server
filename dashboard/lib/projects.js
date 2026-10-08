@@ -20,6 +20,8 @@ const RESERVED = ['proxy', 'dashboard', 'dbadmin', 'mailpit', 'ftp', 'mysql', 'l
 const RESERVED_HOSTS = ['localhost', 'dbadmin.localhost', 'mailpit.localhost', 'ds-dashboard'];
 // Toute adresse est permise : « blog.localhost », « blog.test », ou un nom seul comme « local-blog ».
 const HOST_RE = /^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/;
+// Noms déjà portés par les services sur le réseau Docker : un alias ne peut pas les masquer.
+const RESERVED_ALIASES = ['proxy', 'dashboard', 'dbadmin', 'mailpit', 'ftp', 'mysql', 'localhost', 'host.docker.internal'];
 const WEBROOT = '/var/www/html';
 
 function httpError(status, message) {
@@ -79,6 +81,8 @@ function containerSpec(p, tag) {
       NetworkMode: cfg.NETWORK,
     },
   };
+  // Seulement s'il y en a : la définition (et son empreinte) des autres projets ne change pas.
+  if (p.aliases?.length) spec.NetworkingConfig = { EndpointsConfig: { [cfg.NETWORK]: { Aliases: [...p.aliases] } } };
   spec.Labels['docker-server.spec'] = crypto.createHash('sha1').update(JSON.stringify(spec)).digest('hex').slice(0, 12);
   return spec;
 }
@@ -138,8 +142,30 @@ function runJob(p, title, fn) {
 
 // ── Validation ────────────────────────────────────────────────────────────
 
+/**
+ * Chemin d'un dossier de repo/, à n'importe quelle profondeur : « site », « client/site-web »,
+ * « repo/client/site-web » ou le chemin complet collé depuis l'explorateur. Renvoie « client/site-web ».
+ */
+function normalizeFolder(input) {
+  let f = String(input || '').trim().replace(/^["']|["']$/g, '').replace(/\\/g, '/').replace(/\/+$/, '');
+  const root = `${cfg.hostRoot}/repo/`.replace(/\\/g, '/');
+  if (cfg.hostRoot && f.toLowerCase().startsWith(root.toLowerCase())) f = f.slice(root.length);
+  else if (/^([a-z]:)?\//i.test(f)) throw httpError(400, `Le dossier doit se trouver dans ${root.replace(/\/$/, '')} : déplacez-le (ou copiez-le) dans repo/.`);
+  f = f.replace(/^\.\//, '').replace(/^repo\//, '');
+  const parts = f.split('/').filter(Boolean);
+  if (!parts.length || parts.some((s) => s === '..' || s.startsWith('.'))) throw httpError(400, 'Chemin de dossier invalide.');
+  return parts.join('/');
+}
+
+/** Analyse d'un dossier avant création (assistant « Nouveau projet »). */
+function detectFolder(input) {
+  const folder = normalizeFolder(input);
+  if (!validFolder(folder)) throw httpError(404, `Le dossier repo/${folder} est introuvable.`);
+  return detect.detect(folder, store.get().settings.php);
+}
+
 function validFolder(folder) {
-  if (!folder || /[\\/]|^\.\.?$/.test(folder) || folder.startsWith('.')) return false;
+  if (!folder || folder.split('/').some((s) => !s || s === '..' || s.startsWith('.')) || folder.includes('\\')) return false;
   try {
     return fs.statSync(path.join(cfg.REPO_DIR, folder)).isDirectory();
   } catch {
@@ -167,6 +193,24 @@ function normalizeDomains(list, slug) {
     if (!out.includes(d)) out.push(d);
   }
   if (!out.length) out.push(`${slug}.localhost`);
+  return out;
+}
+
+/** Noms réseau supplémentaires (http://api…) : joignables depuis les autres containers, pas depuis le navigateur. */
+function normalizeAliases(list, slug) {
+  const out = [];
+  for (const raw of list || []) {
+    const a = String(raw).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[:/].*$/, '');
+    if (!a) continue;
+    if (!HOST_RE.test(a)) throw httpError(400, `Nom réseau invalide : « ${a} ».`);
+    if (RESERVED_ALIASES.includes(a) || a.startsWith('ds-') || store.get().mysql[a]) {
+      throw httpError(400, `Le nom « ${a} » est déjà utilisé par un service de docker-server.`);
+    }
+    const other = Object.values(store.get().projects).find((p) => p.slug !== slug && (p.aliases || []).includes(a));
+    if (other) throw httpError(409, `Le nom « ${a} » est déjà utilisé par le projet « ${other.name} ».`);
+    if (!out.includes(a)) out.push(a);
+  }
+  if (out.length > 20) throw httpError(400, '20 noms réseau au maximum.');
   return out;
 }
 
@@ -198,6 +242,7 @@ function normalize(input, base) {
   }
   if (input.iniExtra !== undefined) p.iniExtra = String(input.iniExtra || '').slice(0, 5000);
   if (input.domains !== undefined) p.domains = normalizeDomains(input.domains, p.slug);
+  if (input.aliases !== undefined) p.aliases = normalizeAliases(input.aliases, p.slug);
   if (input.httpsRedirect !== undefined) p.httpsRedirect = !!input.httpsRedirect;
   if (input.database !== undefined) {
     if (input.database && input.database.name) {
@@ -244,7 +289,7 @@ function giveToOwner(target, reference) {
 /** Ajoute un projet. Tout ce qui n'est pas fourni est détecté automatiquement. */
 function create(input) {
   if (input.newFolder) input.folder = createFolder(input.newFolder, input.template);
-  const folder = input.folder;
+  const folder = normalizeFolder(input.folder);
   if (!validFolder(folder)) throw httpError(400, `Le dossier repo/${folder || ''} est introuvable.`);
   const used = Object.values(store.get().projects).find((p) => p.folder === folder);
   if (used) throw httpError(409, `Ce dossier est déjà servi par le projet « ${used.name} ».`);
@@ -266,13 +311,17 @@ function create(input) {
     ini: {},
     iniExtra: '',
     domains: [],
+    aliases: [],
     httpsRedirect: false,
     database: d.database && defInst ? { instance: defInst.id, name: d.database } : null,
     createdAt: new Date().toISOString(),
   };
   p = normalize({ ...input, domains: input.domains || [] }, p);
 
-  store.update((s) => { s.projects[slug] = p; });
+  store.update((s) => {
+    s.projects[slug] = p;
+    s.ignored = s.ignored.filter((f) => f !== folder);
+  });
   writeIni(p);
   return runJob(p, `Création du projet « ${p.name} »`, async (job) => {
     if (p.database) await ensureDatabase(p, job);
@@ -305,7 +354,8 @@ async function update(slug, input) {
   store.update((s) => { s.projects[slug] = next; });
 
   const imageChanged = images.tagFor(old) !== images.tagFor(next);
-  const containerChanged = imageChanged || old.docroot !== next.docroot || old.domains[0] !== next.domains[0];
+  const aliasesChanged = JSON.stringify(old.aliases || []) !== JSON.stringify(next.aliases || []);
+  const containerChanged = imageChanged || aliasesChanged || old.docroot !== next.docroot || old.domains[0] !== next.domains[0];
   const iniChanged = images.phpIni(old) !== images.phpIni(next);
   const proxyChanged = JSON.stringify(old.domains) !== JSON.stringify(next.domains) || old.httpsRedirect !== next.httpsRedirect;
   const dbChanged = JSON.stringify(old.database) !== JSON.stringify(next.database) && next.database;
@@ -457,8 +507,26 @@ async function list() {
 
 /** Dossiers de repo/ qui ne sont pas encore des projets, avec leur détection. */
 function pending() {
-  const used = new Set(Object.values(store.get().projects).map((p) => p.folder));
-  return detect.listFolders().filter((f) => !used.has(f)).map((f) => detect.detect(f, store.get().settings.php));
+  const used = Object.values(store.get().projects).map((p) => p.folder);
+  const skip = new Set([...used, ...store.get().ignored]);
+  // Un dossier qui contient un projet (client/ pour client/site-web) n'est pas proposé lui-même.
+  return detect.listFolders().filter((f) => !skip.has(f) && !used.some((u) => u.startsWith(`${f}/`)))
+    .map((f) => detect.detect(f, store.get().settings.php));
+}
+
+/** Dossiers ignorés encore présents dans repo/. */
+function ignored() {
+  const list = new Set(store.get().ignored);
+  return detect.listFolders().filter((f) => list.has(f));
+}
+
+/** Ignore un dossier (ce n'est pas un site), ou le propose à nouveau. */
+function ignore(folder, on) {
+  if (on && !validFolder(folder)) throw httpError(404, `Le dossier repo/${folder || ''} est introuvable.`);
+  store.update((s) => {
+    s.ignored = s.ignored.filter((f) => f !== folder);
+    if (on) s.ignored.push(folder);
+  });
 }
 
 function details(slug) {
@@ -487,6 +555,6 @@ function details(slug) {
 }
 
 module.exports = {
-  list, pending, details, create, update, start, stop, restart, rebuild, remove, command, reconcile,
+  list, pending, ignored, ignore, detectFolder, details, create, update, start, stop, restart, rebuild, remove, command, reconcile,
   containerName, get, owner, pruneImages, createFolder, giveToOwner,
 };

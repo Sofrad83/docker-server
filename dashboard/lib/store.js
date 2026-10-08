@@ -16,6 +16,8 @@ function defaults() {
     projects: {},
     mysql: {},
     ftp: {},
+    // Dossiers de repo/ qui ne sont pas des sites : plus proposés comme projets.
+    ignored: [],
     settings: { php: '8.4', timezone: cfg.timezone },
   };
 }

@@ -138,6 +138,7 @@ route('GET', '/api/overview', async () => {
     settings: s.settings,
     projects: await projects.list(),
     pending: projects.pending(),
+    ignored: projects.ignored(),
     mysql: instances,
     ftp: { status: jobs.activeFor('ftp') ? 'working' : svc.state(cfg.FTP), accounts: Object.keys(s.ftp).length },
     services: [
@@ -161,7 +162,7 @@ route('GET', '/api/catalog', async () => ({
   iniDefaults: catalog.PHP_INI_DEFAULTS,
 }));
 
-route('GET', '/api/detect', async ({ query }) => detect.detect(query.get('folder'), store.get().settings.php));
+route('GET', '/api/detect', async ({ query }) => projects.detectFolder(query.get('folder')));
 
 // Projets
 route('POST', '/api/projects', async ({ body }) => ({ job: projects.create(body).summary() }));
@@ -232,7 +233,10 @@ route('GET', '/api/ftp/:user/filezilla.xml', async ({ params }) => ({
 }));
 
 // Dossiers, services, réglages
+route('GET', '/api/folders', async () => ({ subfolders: detect.listSubfolders() }));
 route('POST', '/api/folders', async ({ body }) => ({ folder: projects.createFolder(body.name, body.template) }));
+route('POST', '/api/folders/:folder/ignore', async ({ params }) => { projects.ignore(decodeURIComponent(params.folder), true); return { ok: true }; });
+route('DELETE', '/api/folders/:folder/ignore', async ({ params }) => { projects.ignore(decodeURIComponent(params.folder), false); return { ok: true }; });
 route('POST', '/api/services/:id/restart', async ({ params }) => {
   const map = { proxy: cfg.PROXY, dbadmin: 'ds-dbadmin', mailpit: cfg.MAILPIT, ftp: cfg.FTP };
   if (!map[params.id]) throw Object.assign(new Error('Service inconnu'), { status: 404 });

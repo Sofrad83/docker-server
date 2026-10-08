@@ -63,6 +63,8 @@ Il retrouve le MySQL de docker-env et copie **toutes les bases** vers docker-ser
 
 Le `.env` du projet n'a pas besoin d'être modifié.
 
+> **Un projet en appelle un autre par son nom de container** (`http://api`, `http://medias`… dans son `.env`) ? Ouvrez le projet **appelé** › onglet **Adresses** › *Depuis les autres projets*, et ajoutez ce nom. Le nom du container docker-env est dans `C:\docker-env\data\projects.json` (champ `container`). Sans ça, l'appel échoue avec « Could not resolve host ».
+
 ---
 
 ## 4. Créer un FTP — 30 s

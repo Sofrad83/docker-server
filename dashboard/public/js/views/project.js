@@ -464,11 +464,14 @@ export function mount(root, params) {
 
   // ── Adresses ──
   function domainsTab(el) {
-    const st = { domains: [...p.domains], httpsRedirect: !!p.httpsRedirect };
+    const saved = { domains: p.domains, aliases: p.aliases || [], httpsRedirect: !!p.httpsRedirect };
+    const st = JSON.parse(JSON.stringify(saved));
     const list = h('div.domain-list');
+    const aliasList = h('div.domain-list');
     const saveBtn = h('button.btn.btn-primary', { type: 'button', disabled: true, onclick: save }, icon('check', 15), 'Enregistrer');
-    const dirty = () => { saveBtn.disabled = JSON.stringify(st) === JSON.stringify({ domains: p.domains, httpsRedirect: !!p.httpsRedirect }); };
+    const dirty = () => { saveBtn.disabled = JSON.stringify(st) === JSON.stringify(saved); };
     const input = h('input.input.mono', { placeholder: 'mon-site.localhost, mon-site.test ou local-mon-site', autocomplete: 'off', spellcheck: false, onkeydown: (e) => { if (e.key === 'Enter') add(); } });
+    const aliasInput = h('input.input.mono', { placeholder: 'api, medias…', autocomplete: 'off', spellcheck: false, onkeydown: (e) => { if (e.key === 'Enter') addAlias(); } });
     const hostsBox = h('div');
 
     function paint() {
@@ -481,8 +484,26 @@ export function mount(root, params) {
         st.domains.length > 1 ? h('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', title: 'Retirer', onclick: () => { st.domains.splice(i, 1); paint(); dirty(); } }, icon('x', 15)) : null)));
       // Seules les adresses enregistrées peuvent être activées.
       replace(hostsBox, hostsHelp(st.domains.filter((d) => p.domains.includes(d))));
+      replace(aliasList,
+        h('div.domain-row', icon('server', 15), h('code', p.container), h('span.tag', 'toujours disponible'), h('span.spacer'), copyBtn(`http://${p.container}`)),
+        st.aliases.map((a, i) => h('div.domain-row', icon('link', 15), h('code', a),
+          saved.aliases.includes(a) ? null : h('span.tag', 'à enregistrer'),
+          h('span.spacer'),
+          copyBtn(`http://${a}`),
+          h('button.btn.btn-ghost.btn-icon.btn-sm', { type: 'button', title: 'Retirer', onclick: () => { st.aliases.splice(i, 1); paint(); dirty(); } }, icon('x', 15)))));
     }
     onHostsChange = paint;
+
+    function addAlias() {
+      const a = cleanHost(aliasInput.value);
+      if (!a) return;
+      if (!HOST_OK.test(a)) { toast('Nom invalide : lettres, chiffres, tirets et points (ex. api, medias)', { type: 'error' }); return; }
+      if (a.startsWith('ds-')) { toast('Les noms en « ds- » sont réservés à docker-server.', { type: 'error' }); return; }
+      if (!st.aliases.includes(a)) st.aliases.push(a);
+      aliasInput.value = '';
+      paint();
+      dirty();
+    }
 
     function add() {
       const d = cleanHost(input.value);
@@ -497,8 +518,8 @@ export function mount(root, params) {
     async function save() {
       saveBtn.classList.add('busy');
       try {
-        await put(`/api/projects/${slug}`, st);
-        toast('Adresses mises à jour', { type: 'success' });
+        const r = await put(`/api/projects/${slug}`, st);
+        toast(r.job ? 'Adresses enregistrées : le container est recréé…' : 'Adresses mises à jour', { type: r.job ? 'info' : 'success' });
         await refresh();
         await loadDetails();
         paintAll(true);
@@ -512,6 +533,11 @@ export function mount(root, params) {
         list,
         h('div.add-row', h('div.input-icon', icon('plus', 14), input), h('button.btn', { type: 'button', onclick: add }, 'Ajouter'))),
       hostsBox,
+      h('section.card',
+        h('div.card-head', h('h3.card-title', 'Depuis les autres projets'), h('span.muted', 'Noms réseau, pour les appels entre containers')),
+        aliasList,
+        h('div.add-row', h('div.input-icon', icon('plus', 14), aliasInput), h('button.btn', { type: 'button', onclick: addAlias }, 'Ajouter')),
+        h('p.card-hint', 'Un autre projet joint celui-ci en http:// avec l\'un de ces noms (cURL, API, webhooks…). Ajoutez par exemple « api » si un projet appelle http://api : son .env n\'a pas à changer. Ces noms ne s\'ouvrent pas dans le navigateur.')),
       h('section.card',
         h('div.option-row',
           h('div', h('strong', 'Toujours rediriger vers HTTPS'), h('span.muted', 'Les visites en http:// sont renvoyées vers https://.')),

@@ -37,7 +37,10 @@ Pour tout arrêter : **`stop.cmd`** / `./stop.sh` (rien n'est supprimé).
 
 1. Copiez votre site dans le dossier **`repo/`** (par exemple `repo/mon-site/`).
 2. Il apparaît dans le tableau de bord, déjà configuré. Cliquez sur **Mettre en ligne**.
+   Ce n'est pas un site (archives, outils, librairie…) ? Cliquez sur **Ignorer** : il n'est plus proposé, et reste listé en bas de la page *Projets* (« dossiers ignorés ») si vous changez d'avis.
 3. Ouvrez **https://mon-site.localhost**.
+
+Votre site est rangé dans un sous-dossier (`repo/mon-client/site-web/`) ? **Nouveau projet › Sous-dossier** : tapez ou collez son chemin, il est détecté de la même façon. Le dossier parent n'est alors plus proposé comme projet.
 
 Ce qui est détecté : Laravel, Symfony, WordPress (et Bedrock), Drupal, PrestaShop, Joomla, CodeIgniter, CakePHP, Yii, PHP « nu » et sites statiques ; la version de PHP (`composer.json`), le dossier public (`public/`, `web/`…), les extensions demandées (`ext-*`), Node.js (`package.json`) et le nom de la base (`.env`, `wp-config.php`).
 
@@ -78,6 +81,7 @@ Onglet **Xdebug** du projet : *Sur demande* par défaut (extension *Xdebug Helpe
 - Les adresses en `.localhost` fonctionnent immédiatement, sans rien configurer (Chrome, Edge, Firefox).
 - Les autres doivent figurer dans le fichier hosts de la machine. Sous Windows, `start.cmd` lance un petit agent qui s'en charge : dès qu'une adresse apparaît, Windows demande une confirmation, et c'est tout. Sinon : double-cliquez sur **`hosts.cmd`** (Windows) ou lancez `./hosts.sh` (macOS / Linux). Seul un bloc `# >>> docker-server` est écrit, le reste du fichier n'est pas touché.
 - Un nom sans point (`local-mon-site`, `ds-dashboard`) se tape avec un `/` final dans la barre d'adresse (`local-mon-site/`), sinon le navigateur lance une recherche.
+- **Entre projets** (cURL, API…), un projet en joint un autre par `http://ds-<projet>`, ou par un nom court de votre choix (`http://api`) : onglet *Adresses › Depuis les autres projets*. Pratique pour reprendre des projets qui s'appelaient par leur nom de container, sans toucher à leur `.env`.
 
 ---
 
